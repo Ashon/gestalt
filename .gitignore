@@ -1,0 +1,6 @@
+.redis-data
+/data
+.coverage
+.python-version
+__pycache__
+*.py[c|o]

@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  redis:
+    image: redis
+    volumes:
+    - ./.redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_AUTH}
+
+  redis-monitor:
+    image: redis
+    links:
+    - redis:redis
+    command: redis-cli -h redis -a ${REDIS_AUTH} monitor
