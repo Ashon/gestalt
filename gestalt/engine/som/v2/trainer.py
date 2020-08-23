@@ -35,15 +35,24 @@ class Trainer(object):
 
         return squared_dist_matrix
 
-    def get_activation_map(self, sqr_dist_matrix, gain):
+    def get_activation_map(self, sqr_dist_matrix, gain,
+                           learning_rate, learn_threshold):
+
         # activation_map = np.multiply(
         #     np.exp(np.divide(-squared_dist_matrix, squared_gain)),
-        #     1 / np.sqrt(2 * np.pi)
+        #     learning_rate / np.sqrt(2 * np.pi)
         # )
 
         start_time = time.time()
-        activation_map = np.exp(
-            np.divide(-sqr_dist_matrix, gain ** 2))
+        activation_map = np.multiply(
+            np.exp(np.divide(-sqr_dist_matrix, gain ** 2)),
+            learning_rate
+        )
+
+        activation_map = np.where(
+            activation_map > learn_threshold, activation_map, 0
+        ).reshape((*self.partial_model.shape[:2], 1))
+
         end_time = time.time() - start_time
         LOG.debug((
             'activation_map created'
@@ -51,6 +60,21 @@ class Trainer(object):
         ))
 
         return activation_map
+
+    def get_activation_bound(self, activation_map):
+        (x1, y1, x2, y2) = (0, 0, 0, 0)
+
+        coords = np.where(activation_map > 0)
+
+        if len(coords[0]):
+            x1 = np.min(coords[0])
+            x2 = np.max(coords[0]) + 1
+
+        if len(coords[1]):
+            y1 = np.min(coords[1])
+            y2 = np.max(coords[1]) + 1
+
+        return (x1, y1, x2, y2)
 
     def get_error_map(self, feature_vector):
         start_time = time.time()
@@ -66,31 +90,34 @@ class Trainer(object):
 
         distance_matrix = self.get_dist_matrix(bmu_coord)
         squared_dist_matrix = self.get_squared_dist_matrix(distance_matrix)
-        activation_map = self.get_activation_map(squared_dist_matrix, gain)
+        activation_map = self.get_activation_map(
+            squared_dist_matrix, gain, learning_rate, learn_threshold)
+
+        bound = (x1, y1, x2, y2) = self.get_activation_bound(activation_map)
+        trained_count = (x2 - x1) * (y2 - y1)
+        LOG.debug(f'activation bound [{bound=}] [{trained_count=}]')
+
         feature_error_map = self.get_error_map(feature_vector)
 
         LOG.debug((
-            'start train'
+            'train feature start'
             f' [{bmu_coord=}]'
             f' [{gain=:.3f}]'
         ))
         start_time = time.time()
-        trained_count = 0
-        width, height, _ = self.partial_model.shape
-        for x in np.arange(width):
-            for y in np.arange(height):
-                activate = activation_map[x][y] * learning_rate
-                if activate >= learn_threshold:
-                    trained_count += 1
-                    bonus_weights = np.multiply(
-                        feature_error_map[x][y], activate)
-                    self.partial_model[x][y] = np.clip(
-                        np.add(self.partial_model[x][y], bonus_weights),
-                        a_min=0, a_max=1)
+        bonus_weights = np.multiply(feature_error_map, activation_map)
+
+        changed = np.clip(
+            np.add(self.partial_model, bonus_weights),
+            a_min=0, a_max=1)
+
+        for x in np.arange(x1, x2):
+            for y in np.arange(y1, y2):
+                self.partial_model[x][y] = changed[x][y]
 
         end_time = time.time() - start_time
         LOG.debug((
-            'trained'
+            'train feature finished'
             f' [{trained_count=} units]'
             f' [elapsed={end_time * 1000:.0f} ms]'
         ))
