@@ -4,3 +4,5 @@
 .python-version
 __pycache__
 *.py[c|o]
+*.egg-info
+/tests
