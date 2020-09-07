@@ -54,18 +54,20 @@ def draw_bmu(feature_map, bmus, ax):
                     verticalalignment='bottom',
                 )
 
-            except Exception:
+            except ValueError:
                 pass
 
 
 def plot_map(feature_map, bmus=None):
     fig, ax = plt.subplots()
 
-    ax.pcolormesh(
+    c = ax.pcolor(
         np.arange(feature_map.shape[1] + 1),
         np.arange(feature_map.shape[0] + 1),
         feature_map
     )
+
+    fig.colorbar(c, ax=ax)
 
     if bmus:
         draw_bmu(feature_map, bmus, ax)
