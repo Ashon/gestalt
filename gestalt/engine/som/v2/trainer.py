@@ -27,7 +27,8 @@ class Trainer(object):
 
         return distance_matrix
 
-    def get_activation_map(self, sqr_dist_matrix, gain, learning_rate):
+    def get_activation_map(self, sqr_dist_matrix, gain,
+                           learning_rate, learn_threshold):
 
         # activation_map = np.multiply(
         #     np.exp(np.divide(-squared_dist_matrix, squared_gain)),
@@ -39,6 +40,8 @@ class Trainer(object):
             np.exp(np.divide(-sqr_dist_matrix, gain ** 2)),
             learning_rate
         ).reshape((*self.partial_model.shape[:2], 1))
+
+        activation_map[activation_map < learn_threshold] = 0
 
         end_time = time.time() - start_time
         LOG.debug((
@@ -79,7 +82,7 @@ class Trainer(object):
 
         distance_matrix = self.get_dist_matrix(bmu_coord)
         activation_map = self.get_activation_map(
-            distance_matrix, gain, learning_rate)
+            distance_matrix, gain, learning_rate, learn_threshold)
         (x1, y1, x2, y2) = self.get_activation_bound(
             activation_map, learn_threshold)
         feature_error_map = self.get_error_map(feature_vector)
