@@ -19,10 +19,10 @@ class Trainer(object):
         distance_matrix = np.multiply(
             diff_matrix, diff_matrix).sum(axis=2)
 
-        end_time = time.time() - start_time
+        elapsed = time.time() - start_time
         LOG.debug((
             'distance_matrix created'
-            f' [elapsed={end_time * 1000:.0f} ms]'
+            f' [elapsed={elapsed * 1000:.0f} ms]'
         ))
 
         return distance_matrix
@@ -41,19 +41,21 @@ class Trainer(object):
             learning_rate
         ).reshape((*self.partial_model.shape[:2], 1))
 
-        activation_map[activation_map < learn_threshold] = 0
+        activation_map[activation_map <= learn_threshold] = 0
 
-        end_time = time.time() - start_time
+        elapsed = time.time() - start_time
         LOG.debug((
             'activation_map created'
-            f' [elapsed={end_time * 1000:.0f} ms]'
+            f' [elapsed={elapsed * 1000:.0f} ms]'
         ))
 
         return activation_map
 
-    def get_activation_bound(self, activation_map, learn_threshold):
+    def get_activation_bound(self, activation_map):
+        start_time = time.time()
+
         (x1, y1, x2, y2) = (0, 0, 0, 0)
-        coords = np.where(activation_map >= learn_threshold)
+        coords = np.where(activation_map > 0)
 
         if len(coords[0]):
             x1 = np.min(coords[0])
@@ -64,15 +66,20 @@ class Trainer(object):
             y2 = np.max(coords[1]) + 1
 
         bound = (x1, y1, x2, y2)
-        LOG.debug(f'activation bound [{bound=}]')
+        elapsed = time.time() - start_time
+
+        LOG.debug((
+            f'activation bound [{bound=}]'
+            f' [elapsed={elapsed * 1000:.0f} ms]'
+        ))
 
         return bound
 
     def get_error_map(self, feature_vector):
         start_time = time.time()
         feature_error_map = np.subtract(feature_vector, self.partial_model)
-        end_time = time.time() - start_time
-        LOG.debug(f'error_map created [elapsed={end_time * 1000:.0f} ms]')
+        elapsed = time.time() - start_time
+        LOG.debug(f'error_map created [elapsed={elapsed * 1000:.0f} ms]')
 
         return feature_error_map
 
@@ -83,11 +90,13 @@ class Trainer(object):
         distance_matrix = self.get_dist_matrix(bmu_coord)
         activation_map = self.get_activation_map(
             distance_matrix, gain, learning_rate, learn_threshold)
-        (x1, y1, x2, y2) = self.get_activation_bound(
-            activation_map, learn_threshold)
-        feature_error_map = self.get_error_map(feature_vector)
 
+        (x1, y1, x2, y2) = self.get_activation_bound(activation_map)
         trained_count = (x2 - x1) * (y2 - y1)
+        if trained_count == 0:
+            LOG.debug('skip train feature')
+            return trained_count
+
         LOG.debug((
             'train feature start'
             f' [{bmu_coord=}]'
@@ -95,6 +104,8 @@ class Trainer(object):
             f' [{trained_count=} units]'
         ))
         start_time = time.time()
+
+        feature_error_map = self.get_error_map(feature_vector)
         bonus_weights = np.multiply(feature_error_map, activation_map)
 
         changed = np.clip(
@@ -105,10 +116,10 @@ class Trainer(object):
             for y in np.arange(y1, y2):
                 self.partial_model[x][y] = changed[x][y]
 
-        end_time = time.time() - start_time
+        elapsed = time.time() - start_time
         LOG.debug((
             'train feature finished'
-            f' [elapsed={end_time * 1000:.0f} ms]'
+            f' [elapsed={elapsed * 1000:.0f} ms]'
         ))
 
         return trained_count
